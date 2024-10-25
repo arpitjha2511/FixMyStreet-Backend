@@ -6,8 +6,8 @@ const port = 3000;
 const cors = require('cors');
 
 // Increase limit for JSON payload
-app.use(express.json({ limit: '10mb' })); // Adjust the size as needed
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '30mb' })); // Adjust the size as needed
+app.use(express.urlencoded({ limit: '30mb', extended: true }));
 
 //app.use(express.json());
 app.use(cors());
