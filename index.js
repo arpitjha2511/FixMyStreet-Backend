@@ -5,7 +5,11 @@ const app = express();
 const port = 3000;
 const cors = require('cors');
 
-app.use(express.json());
+// Increase limit for JSON payload
+app.use(express.json({ limit: '10mb' })); // Adjust the size as needed
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+//app.use(express.json());
 app.use(cors());
 
 //ngrok http --url=pumped-enough-newt.ngrok-free.app 3000
@@ -78,20 +82,22 @@ app.post('/validateLogin', async (req, res) => {
 });
 
 // POST: Upload Pothole (Add Pothole)
-app.post('/uploadImage', upload.single('image'), async (req, res) => {
+app.post('/uploadImage', async (req, res) => {
     try {
-        const { address, latitude, longitude, submittedBy } = req.body;
-        const image = req.file;  // Get uploaded image from multer
+        let { image, address, latitude, longitude, submittedBy } = req.body;
 
+        // Check if the image is provided and add the prefix if not already present
+        const base64Prefix = 'data:image/jpeg;base64,';
         if (!image) {
             return res.status(400).json({ error: 'Image not provided' });
         }
-        console.log(image.buffer);
-        // Convert image buffer to Base64
-        const base64Image = image.buffer.toString('base64');
+
+        if (!image.startsWith(base64Prefix)) {
+            image = base64Prefix + image;
+        }
 
         const newPothole = new Pothole({
-            image: `data:image/jpeg;base64,${base64Image}`,  // Store as Base64
+            image,  // Base64 encoded image
             latitude: parseFloat(latitude),
             longitude: parseFloat(longitude),
             address,
@@ -108,6 +114,33 @@ app.post('/uploadImage', upload.single('image'), async (req, res) => {
     }
 });
 
+// PUT: Update Image by Pothole ID
+app.put('/updateImage', async (req, res) => {
+    try {
+        const { id, image } = req.body;
+
+        // Validate input
+        if (!id || !image) {
+            return res.status(400).json({ error: 'ID and Base64 encoded image are required' });
+        }
+
+        // Find the pothole by ID
+        const pothole = await Pothole.findById(id);
+        if (!pothole) {
+            return res.status(404).json({ error: 'Pothole not found' });
+        }
+
+        // Update the image
+        pothole.image = `data:image/jpeg;base64,${image}`; // Assuming the image is JPEG
+        await pothole.save();
+
+        res.status(200).json({ message: 'Image updated successfully', id: pothole._id });
+    } catch (error) {
+        console.error('Error updating image:', error);
+        res.status(500).send('Server error');
+    }
+});
+
 // PUT: Mark Pothole as Resolved by ID
 app.put('/markAsResolved/:id', async (req, res) => {
     try {
@@ -118,10 +151,6 @@ app.put('/markAsResolved/:id', async (req, res) => {
 
         if (!pothole) {
             return res.status(404).json({ error: 'Pothole not found' });
-        }
-
-        if (pothole.submittedBy !== submittedBy) {
-            return res.status(403).json({ error: 'Permission denied' });
         }
 
         pothole.resolved = true;
