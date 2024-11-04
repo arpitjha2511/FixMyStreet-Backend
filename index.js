@@ -84,7 +84,7 @@ app.post('/validateLogin', async (req, res) => {
 // POST: Upload Pothole (Add Pothole)
 app.post('/uploadImage', async (req, res) => {
     try {
-        let { image, address, latitude, longitude, submittedBy } = req.body;
+        let {  } = req.body;
 
         // Check if the image is provided and add the prefix if not already present
         const base64Prefix = 'data:image/jpeg;base64,';
@@ -194,11 +194,26 @@ app.get('/getAllResolved', async (req, res) => {
         res.status(500).send('Server error');
     }
 });
-
-// POST: Retrieve All Cases Submitted by a Specific User
-app.post('/getAllSentByUser', async (req, res) => {
+// GET: Retrieve Pothole by ID
+app.get('/getPotholeById/:id', async (req, res) => {
     try {
-        const { submittedBy } = req.body;
+        const { id } = req.params;
+        const pothole = await Pothole.findById(id);
+        if (!pothole) {
+            return res.status(404).json({ error: 'Pothole not found' });
+        }
+        res.status(200).json(pothole);
+    } catch (error) {
+        console.error('Error retrieving pothole by ID:', error);
+        res.status(500).send('Server error');
+    }
+});
+
+
+// GET: Retrieve All Cases Submitted by a Specific User
+app.get('/getAllSentByUser/:submittedBy', async (req, res) => {
+    try {
+        const { submittedBy } = req.params;
         const userPotholes = await Pothole.find({ submittedBy });
         res.status(200).json(userPotholes);
     } catch (error) {

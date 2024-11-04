@@ -57,7 +57,7 @@ Retrieve a list of all reported pothole cases.
 ### 3. Get Resolved Cases
 Retrieve a list of all resolved pothole cases.
 
-- **URL**: `/getResolvedCases`
+- **URL**: `/getAllResolved`
 - **Method**: `GET`
 - **Response**:
   - **Success**: 200 OK, returns an array of resolved pothole cases in JSON format
@@ -67,7 +67,7 @@ Retrieve a list of all resolved pothole cases.
 ### 4. Get Pending Cases
 Retrieve a list of all unresolved (pending) pothole cases.
 
-- **URL**: `/getPendingCases`
+- **URL**: `/getAllPending`
 - **Method**: `GET`
 - **Response**:
   - **Success**: 200 OK, returns an array of pending pothole cases in JSON format
