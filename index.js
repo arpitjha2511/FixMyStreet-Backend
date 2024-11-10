@@ -1,20 +1,21 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
+const axios = require('axios'); // For making external API requests
 const app = express();
 const port = 3000;
 const cors = require('cors');
-
+//ngrok startup command: 
+// ngrok http --url=wildcat-mint-actually.ngrok-free.app 3000
 // Increase limit for JSON payload
-app.use(express.json({ limit: '30mb' })); // Adjust the size as needed
-app.use(express.urlencoded({ limit: '30mb', extended: true }));
-
-//app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use(cors());
 
-//ngrok http --url=pumped-enough-newt.ngrok-free.app 3000
-//ngrok command to start a tunnel from port 3000
-
+app.use((req, res, next) => {
+    req.setTimeout(60000); // Set timeout to 60 seconds (60000 ms)
+    next();
+});
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
@@ -29,11 +30,10 @@ mongoose.connect('mongodb://localhost:27017/FixMyStreetDB', {
     console.error('Error connecting to MongoDB:', err);
 });
 
-
 const potholeSchema = new mongoose.Schema({
-    image: String,  // Base64 encoded image 
-    latitude: Number,
-    longitude: Number,
+    image: String, // Base64 encoded image
+    latitude: String,
+    longitude: String,
     address: String,
     submittedBy: String,
     resolved: Boolean,
@@ -42,7 +42,6 @@ const potholeSchema = new mongoose.Schema({
 });
 
 const Pothole = mongoose.model('Pothole', potholeSchema);
-
 
 const userSchema = new mongoose.Schema({
     name: String,
@@ -84,20 +83,20 @@ app.post('/validateLogin', async (req, res) => {
 // POST: Upload Pothole (Add Pothole)
 app.post('/uploadImage', async (req, res) => {
     try {
-        let {  } = req.body;
+        let { image, latitude, longitude, address, submittedBy } = req.body;
 
-        // Check if the image is provided and add the prefix if not already present
+        // Add base64 prefix to the image if not already present
         const base64Prefix = 'data:image/jpeg;base64,';
         if (!image) {
             return res.status(400).json({ error: 'Image not provided' });
         }
-
         if (!image.startsWith(base64Prefix)) {
             image = base64Prefix + image;
         }
 
+        // Create a new Pothole entry with a default threat level
         const newPothole = new Pothole({
-            image,  // Base64 encoded image
+            image,
             latitude: parseFloat(latitude),
             longitude: parseFloat(longitude),
             address,
@@ -106,8 +105,28 @@ app.post('/uploadImage', async (req, res) => {
             threat: 0
         });
 
-        await newPothole.save();
-        res.status(201).json({ id: newPothole._id });
+        // Save the initial pothole entry to get the unique ID
+        const savedPothole = await newPothole.save();
+
+        // Send the image and image_id to the external API
+        const response = await axios.post('https://touching-subtle-bat.ngrok-free.app/detect_potholes', {
+            image,
+            id: savedPothole._id.toString()
+        }, 
+        { timeout: 60000 }
+    );
+
+        const { image: updatedImage, severity } = response.data;
+
+        // Ensure updatedImage has the prefix before saving
+        const finalImage = updatedImage.startsWith(base64Prefix) ? updatedImage : base64Prefix + updatedImage;
+
+        // Update the saved pothole with the processed image and severity level
+        savedPothole.image = finalImage;
+        savedPothole.threat = severity;
+        await savedPothole.save();
+
+        res.status(201).json({ id: savedPothole._id });
     } catch (error) {
         console.error('Error uploading image:', error);
         res.status(500).send('Server error');
@@ -119,19 +138,16 @@ app.put('/updateImage', async (req, res) => {
     try {
         const { id, image } = req.body;
 
-        // Validate input
         if (!id || !image) {
             return res.status(400).json({ error: 'ID and Base64 encoded image are required' });
         }
 
-        // Find the pothole by ID
         const pothole = await Pothole.findById(id);
         if (!pothole) {
             return res.status(404).json({ error: 'Pothole not found' });
         }
 
-        // Update the image
-        pothole.image = `data:image/jpeg;base64,${image}`; // Assuming the image is JPEG
+        pothole.image = `data:image/jpeg;base64,${image}`;
         await pothole.save();
 
         res.status(200).json({ message: 'Image updated successfully', id: pothole._id });
@@ -145,10 +161,8 @@ app.put('/updateImage', async (req, res) => {
 app.put('/markAsResolved/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { submittedBy } = req.body;
 
         const pothole = await Pothole.findById(id);
-
         if (!pothole) {
             return res.status(404).json({ error: 'Pothole not found' });
         }
@@ -162,10 +176,10 @@ app.put('/markAsResolved/:id', async (req, res) => {
     }
 });
 
-// GET: Retrieve All Cases
+// GET: Retrieve All Cases in Descending Order of Threat Level
 app.get('/getAllCases', async (req, res) => {
     try {
-        const potholes = await Pothole.find({});
+        const potholes = await Pothole.find({}).sort({ threat: -1 });
         res.status(200).json(potholes);
     } catch (error) {
         console.error('Error retrieving cases:', error);
@@ -173,10 +187,10 @@ app.get('/getAllCases', async (req, res) => {
     }
 });
 
-// GET: Retrieve All Pending Cases
+// GET: Retrieve All Pending Cases in Descending Order of Threat Level
 app.get('/getAllPending', async (req, res) => {
     try {
-        const pendingPotholes = await Pothole.find({ resolved: false });
+        const pendingPotholes = await Pothole.find({ resolved: false }).sort({ threat: -1 });
         res.status(200).json(pendingPotholes);
     } catch (error) {
         console.error('Error retrieving pending cases:', error);
@@ -184,16 +198,17 @@ app.get('/getAllPending', async (req, res) => {
     }
 });
 
-// GET: Retrieve All Resolved Cases
+// GET: Retrieve All Resolved Cases in Descending Order of Threat Level
 app.get('/getAllResolved', async (req, res) => {
     try {
-        const resolvedPotholes = await Pothole.find({ resolved: true });
+        const resolvedPotholes = await Pothole.find({ resolved: true }).sort({ threat: -1 });
         res.status(200).json(resolvedPotholes);
     } catch (error) {
         console.error('Error retrieving resolved cases:', error);
         res.status(500).send('Server error');
     }
 });
+
 // GET: Retrieve Pothole by ID
 app.get('/getPotholeById/:id', async (req, res) => {
     try {
@@ -209,12 +224,11 @@ app.get('/getPotholeById/:id', async (req, res) => {
     }
 });
 
-
-// GET: Retrieve All Cases Submitted by a Specific User
+// GET: Retrieve All Cases Submitted by a Specific User in Descending Order of Threat Level
 app.get('/getAllSentByUser/:submittedBy', async (req, res) => {
     try {
         const { submittedBy } = req.params;
-        const userPotholes = await Pothole.find({ submittedBy });
+        const userPotholes = await Pothole.find({ submittedBy }).sort({ threat: -1 });
         res.status(200).json(userPotholes);
     } catch (error) {
         console.error('Error retrieving user cases:', error);
