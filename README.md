@@ -62,6 +62,7 @@ Retrieve a list of all resolved pothole cases.
 - **Response**:
   - **Success**: 200 OK, returns an array of resolved pothole cases in JSON format
 
+
 ---
 
 ### 4. Get Pending Cases
